@@ -1,10 +1,13 @@
 import telebot
 import random
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext
 from telebot import types
 from config import BOT_TOKEN  # Импортируем токен from config
 
 # Создаем экземпляр бота
 bot = telebot.TeleBot(BOT_TOKEN)
+
 
 # Списки мотивирующих фраз
 MOTIVATIONS = [
@@ -142,6 +145,7 @@ if __name__ == "__main__":
     print("🤖 Бот запущен...")
     try:
         bot.polling(none_stop=True)
+
     except Exception as e:
         print(f"❌ Ошибка: {e}")
 
