@@ -1,7 +1,6 @@
-import random, logging
+import random
+import sys
 import os
-import time
-from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Updater,
@@ -11,18 +10,10 @@ from telegram.ext import (
     Filters,
     CallbackContext
 )
+from config import BOT_TOKEN  # Убедись, что в config.py есть переменная BOT_TOKEN
 
-load_dotenv()
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-
-# Создание логгера для текущего модуля
-logger = logging.getLogger(__name__)
-
-# Настройка системы логирования
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+# ID администратора бота (замените на свой Telegram ID для безопасности)
+ADMIN_ID = None  # Установите свой ID, например: ADMIN_ID = 123456789
 
 # Мотивационные фразы
 MOTIVATIONS = [
@@ -62,22 +53,15 @@ SMART_QUOTES = [
     "Твоя жизнь не улучшается случайно, она улучшается благодаря изменениям. — Джим Рон"
 ]
 
+# Глобальная переменная для хранения updater
+updater = None
+
 
 def create_keyboard():
-    """Создает основную клавиатуру с кнопками действий"""
     keyboard = [
         [InlineKeyboardButton("✨ Получить мотивацию", callback_data='get_motivation')],
         [InlineKeyboardButton("💡 Получить цитату", callback_data='get_quote')],
-        [InlineKeyboardButton("❌ Выйти", callback_data='exit')]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-
-def create_exit_confirmation_keyboard():
-    """Создает клавиатуру подтверждения выхода"""
-    keyboard = [
-        [InlineKeyboardButton("✅ Да, выйти", callback_data='confirm_exit')],
-        [InlineKeyboardButton("❌ Нет, остаться", callback_data='cancel_exit')]
+        [InlineKeyboardButton("🛑 Остановить бота", callback_data='stop_bot')]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -92,6 +76,7 @@ def start(update: Update, context: CallbackContext):
 🌟 Мои возможности:
 • Мотивирующие фразы
 • Мудрые цитаты
+• Возможность остановки бота командой /stop
 
 Готов зарядиться позитивом? Выбирай кнопку ниже! 💪"""
     update.message.reply_text(text, reply_markup=create_keyboard())
@@ -109,10 +94,28 @@ def get_smart_quote(update: Update, context: CallbackContext):
     update.message.reply_text(f"💡 {quote}", reply_markup=create_keyboard())
 
 
-# /exit - команда для выхода
-def exit_command(update: Update, context: CallbackContext):
-    text = "Вы уверены, что хотите выйти? 🤔"
-    update.message.reply_text(text, reply_markup=create_exit_confirmation_keyboard())
+# /stop - остановка бота
+def stop_bot_command(update: Update, context: CallbackContext):
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+
+    # Проверка прав администратора (опционально)
+    if ADMIN_ID is not None and user_id != ADMIN_ID:
+        update.message.reply_text("❌ У вас нет прав для остановки бота.")
+        return
+
+    goodbye_text = f"👋 До свидания, {user_name}!\n\n🤖 Бот остановлен по вашей команде.\n\n💙 Спасибо за использование! До новых встреч!"
+    update.message.reply_text(goodbye_text)
+
+    print(f"🛑 Бот остановлен пользователем {user_name} (ID: {user_id})")
+
+    # Остановка бота
+    if updater:
+        updater.stop()
+        updater.is_idle = False
+
+    # Завершение программы
+    os._exit(0)
 
 
 # Inline-кнопки
@@ -123,29 +126,30 @@ def button_handler(update: Update, context: CallbackContext):
     if query.data == "get_motivation":
         text = f"✨ {random.choice(MOTIVATIONS)}"
         query.edit_message_text(text=text, reply_markup=create_keyboard())
-
     elif query.data == "get_quote":
         text = f"💡 {random.choice(SMART_QUOTES)}"
         query.edit_message_text(text=text, reply_markup=create_keyboard())
+    elif query.data == "stop_bot":
+        user_id = query.from_user.id
+        user_name = query.from_user.first_name
 
-    elif query.data == "exit":
-        text = "Вы уверены, что хотите выйти? 🤔"
-        query.edit_message_text(text=text, reply_markup=create_exit_confirmation_keyboard())
+        # Проверка прав администратора (опционально)
+        if ADMIN_ID is not None and user_id != ADMIN_ID:
+            query.answer("❌ У вас нет прав для остановки бота.")
+            return
 
-    elif query.data == "confirm_exit":
-        text = """👋 До свидания!
+        goodbye_text = f"👋 До свидания, {user_name}!\n\n🤖 Бот остановлен по вашей команде.\n\n💙 Спасибо за использование! До новых встреч!"
+        query.edit_message_text(text=goodbye_text)
 
-Было приятно мотивировать вас! 😊
-Если захотите вернуться, просто напишите /start
+        print(f"🛑 Бот остановлен пользователем {user_name} (ID: {user_id})")
 
-Удачи во всех начинаниях! 🌟"""
-        query.edit_message_text(text=text)
+        # Остановка бота
+        if updater:
+            updater.stop()
+            updater.is_idle = False
 
-    elif query.data == "cancel_exit":
-        name = query.from_user.first_name
-        text = f"Отлично, {name}! Продолжаем мотивироваться! 💪"
-        query.edit_message_text(text=text, reply_markup=create_keyboard())
-
+        # Завершение программы
+        os._exit(0)
     else:
         text = "Неизвестная команда."
         query.edit_message_text(text=text, reply_markup=create_keyboard())
@@ -154,21 +158,23 @@ def button_handler(update: Update, context: CallbackContext):
 # Ответ на любое другое сообщение
 def unknown_message(update: Update, context: CallbackContext):
     update.message.reply_text(
-        "Введи /getmotivation, /getsmartquote, /exit или нажми кнопку ниже 👇",
+        "Введи /getmotivation, /getsmartquote, /stop или нажми кнопку ниже 👇",
         reply_markup=create_keyboard()
     )
 
 
 # Запуск
 def main():
-    updater = Updater(BOT_TOKEN)
+    global updater
+
+    updater = Updater(BOT_TOKEN, use_context=True)
     dp = updater.dispatcher
 
     # Команды
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("getmotivation", get_motivation))
     dp.add_handler(CommandHandler("getsmartquote", get_smart_quote))
-    dp.add_handler(CommandHandler("exit", exit_command))
+    dp.add_handler(CommandHandler("stop", stop_bot_command))
 
     # Inline-кнопки
     dp.add_handler(CallbackQueryHandler(button_handler))
@@ -177,9 +183,18 @@ def main():
     dp.add_handler(MessageHandler(Filters.text & ~Filters.command, unknown_message))
 
     print("🤖 Бот запущен...")
-    updater.start_polling()
-    updater.idle()
+
+    try:
+        updater.start_polling()
+        updater.idle()
+    except KeyboardInterrupt:
+        print("\n🛑 Бот остановлен через Ctrl+C")
+        updater.stop()
+        sys.exit(0)
+    except Exception as e:
+        print(f"❌ Ошибка: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    main()
+    main() 
